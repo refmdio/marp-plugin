@@ -1,5 +1,3 @@
-import { STAGE_BASE_CLASS } from './constants'
-
 export function getStyles(): string {
   return `
 .refmd-marp-root {
@@ -108,122 +106,156 @@ export function getStyles(): string {
   text-transform: uppercase;
   color: var(--muted-foreground, #64748b);
 }
-.refmd-marp-section-label strong {
-  letter-spacing: normal;
-  font-size: 0.75rem;
-  color: var(--foreground, #0f172a);
-}
-.refmd-marp-editor-toolbar-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--refmd-border-color);
-}
-.refmd-marp-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--refmd-muted-surface);
-  border: 1px solid var(--refmd-muted-border);
-  border-radius: 9999px;
-  padding: 0.4rem 0.65rem;
-}
-.refmd-marp-toolbar__btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0.25rem 0.45rem;
-  border-radius: 9999px;
-  color: var(--muted-foreground, #64748b);
-  font-weight: 600;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  min-width: 2rem;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-.refmd-marp-toolbar__btn:hover:not([disabled]) {
-  background: color-mix(in srgb, var(--primary, #3b82f6) 16%, transparent);
-  color: var(--primary, #3b82f6);
-}
-.refmd-marp-toolbar__btn[disabled] {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.refmd-marp-toolbar__divider {
-  width: 1px;
-  height: 1.4rem;
-  background: var(--refmd-muted-border);
-}
-.refmd-marp-editor {
-  min-height: 0;
-}
 .refmd-marp-textarea {
+  flex: 1 1 auto;
+  min-height: 14rem;
   width: 100%;
-  height: 100%;
+  padding: 1rem;
+  border-radius: 0.75rem;
   border: 1px solid var(--refmd-input-border);
-  border-radius: 1rem;
   background: var(--refmd-input-surface);
-  padding: 1rem 1.1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  line-height: 1.55;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   color: var(--foreground, #0f172a);
-  box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.06);
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
 }
-.refmd-marp-textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--primary, #3b82f6) 30%, transparent);
-  outline-offset: 3px;
+.refmd-marp-textarea:focus {
+  outline: none;
+  border-color: var(--refmd-input-border);
+  box-shadow: none;
 }
 .refmd-marp-textarea[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.dark .refmd-marp-textarea {
+  background: var(--refmd-input-surface);
+  border-color: var(--refmd-input-border);
+  box-shadow: none;
+}
+.dark .refmd-marp-textarea:focus {
+  border-color: var(--refmd-input-border);
+  box-shadow: none;
+}
+.refmd-marp-editor-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border, rgba(148,163,184,0.25)) 100%, transparent);
+}
+.refmd-marp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--muted-foreground, #64748b);
+}
+.refmd-marp-toolbar__btn {
+  height: 1.75rem;
+  min-width: 1.75rem;
+  padding: 0 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: currentColor;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.refmd-marp-toolbar__btn:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--primary, #3b82f6) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary, #3b82f6) 35%, transparent);
+  color: var(--primary, #3b82f6);
+}
+.refmd-marp-toolbar__btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary, #3b82f6) 35%, transparent);
+  outline-offset: 2px;
+}
+.refmd-marp-toolbar__btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.refmd-marp-toolbar__divider {
+  width: 1px;
+  height: 1.25rem;
+  background: color-mix(in srgb, var(--border, rgba(148,163,184,0.35)) 100%, transparent);
+  margin: 0 0.35rem;
+}
+.refmd-marp-status-inline {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--muted-foreground, #64748b);
+  text-align: right;
+  white-space: nowrap;
+}
+.refmd-marp-status-inline.is-error {
+  color: color-mix(in srgb, var(--destructive, #ef4444) 70%, black 30%);
+}
 .refmd-marp-pagination-footer {
   display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 0.5rem 0;
+  padding-top: 0;
 }
 .refmd-marp-pagination-container {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  background: color-mix(in srgb, var(--muted, rgba(241,245,249,0.75)) 55%, transparent);
-  border: 1px solid color-mix(in srgb, var(--muted, rgba(226,232,240,0.6)) 50%, transparent);
-  border-radius: 9999px;
-  padding: 0.35rem 0.75rem;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+  width: 100%;
+  padding: 0 0.75rem;
+  min-height: 2.5rem;
+}
+.refmd-marp-pagination-container .refmd-marp-pagination {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  pointer-events: auto;
+}
+.refmd-marp-action {
+  border-radius: 0.65rem !important;
+  border-width: 1px !important;
+  padding: 0.4rem 1.1rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em;
+}
+.refmd-marp-action--ghost {
+  background: transparent !important;
+  border-color: color-mix(in srgb, var(--border, rgba(148,163,184,0.35)) 100%, transparent) !important;
+  color: var(--muted-foreground, #64748b) !important;
+}
+.refmd-marp-action--ghost:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--primary, #3b82f6) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--primary, #3b82f6) 35%, transparent) !important;
+  color: var(--primary, #3b82f6) !important;
 }
 .refmd-marp-pagination {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-right: 0.5rem;
-  background: rgba(255,255,255,0.6);
-  border-radius: 9999px;
-  padding: 0.2rem 0.5rem;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
-}
-.dark .refmd-marp-pagination {
-  background: rgba(15,23,42,0.55);
+  gap: 0.5rem !important;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-foreground, #64748b);
 }
 .refmd-marp-pagination-btn {
-  border: none;
-  border-radius: 0.75rem;
-  padding: 0.35rem 0.65rem;
-  background: rgba(255,255,255,0.85);
-  color: var(--muted-foreground, #64748b);
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: 9999px !important;
+  padding: 0.35rem 0.85rem !important;
+  min-width: 2.4rem;
+  font-size: 0.7rem !important;
+  letter-spacing: 0.18em !important;
   font-weight: 600;
-  font-size: 0.7rem;
-  min-width: 2.2rem;
-  border: 1px solid color-mix(in srgb, var(--border, rgba(148,163,184,0.35)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, rgba(148,163,184,0.35)) 85%, transparent) !important;
+  background: color-mix(in srgb, var(--muted, rgba(226,232,240,0.6)) 55%, transparent) !important;
+  color: var(--muted-foreground, #64748b) !important;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
-}
-.dark .refmd-marp-pagination-btn {
-  background: rgba(15,23,42,0.7);
-  color: rgba(226,232,240,0.92);
-  border: 1px solid rgba(148,163,184,0.25);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 .refmd-marp-pagination-btn:hover:not([disabled]) {
   background: color-mix(in srgb, var(--primary, #3b82f6) 14%, transparent) !important;
@@ -400,5 +432,6 @@ export function getStyles(): string {
   50% { transform: translateX(0%); opacity: 0.6; }
   100% { transform: translateX(100%); opacity: 0.2; }
 }
+
 `
 }
