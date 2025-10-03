@@ -1,0 +1,19 @@
+{
+  "name": "@refmdio/marp-plugin-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=../dist/index.mjs --define:process.env.NODE_ENV='\"production\"' --inject:src/process-shim.ts"
+  },
+  "dependencies": {
+    "@marp-team/marp-core": "^3.8.0",
+    "@refmdio/plugin-sdk": "^0.1.7",
+    "punycode": "^2.3.1",
+    "util": "^0.12.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5",
+    "typescript": "^5.9.2"
+  }
+}
