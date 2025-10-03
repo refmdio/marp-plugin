@@ -1,3 +1,5 @@
+import { STAGE_BASE_CLASS } from './constants'
+
 export function getStyles(): string {
   return `
 .refmd-marp-root {
