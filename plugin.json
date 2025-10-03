@@ -6,7 +6,7 @@
   "repository": "https://github.com/refmdio/marp-plugin",
   "abi": "refmd-plugin/v1",
   "mounts": ["/marp/*"],
-  "frontend": { "entry": "dist/index.mjs", "mode": "esm" },
+  "frontend": { "entry": "index.mjs", "mode": "esm" },
   "backend": { "wasm": "backend/plugin.wasm" },
   "permissions": ["doc.read", "doc.write", "kv.read", "kv.write"],
   "commands": ["marp.create"],
