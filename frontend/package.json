@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=../dist/index.mjs --define:process.env.NODE_ENV='\"production\"' --inject:src/process-shim.ts"
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/index.mjs --define:process.env.NODE_ENV='\"production\"' --inject:src/process-shim.ts"
   },
   "dependencies": {
     "@marp-team/marp-core": "^3.8.0",
