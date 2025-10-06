@@ -227,8 +227,16 @@ export class MarpApp {
     this.state.statusMessage = 'Loading Marp deck…'
     this.applyUiState({ syncTextarea: false })
     try {
-      const kv = await this.host?.api?.getKv?.(PLUGIN_ID, docId, STATE_KEY, this.tokenFromHost)
-      const payload = extractState(kv)
+      const kvResult = await this.host?.exec?.('host.kv.get', {
+        docId,
+        key: STATE_KEY,
+        token: this.tokenFromHost,
+      })
+      if (kvResult?.ok === false) {
+        const message = kvResult.error?.message || kvResult.error?.code || 'Failed to load state'
+        throw new Error(message)
+      }
+      const payload = extractState(kvResult?.data)
       const markdown = payload?.markdown && typeof payload.markdown === 'string' ? payload.markdown : DEFAULT_MARKDOWN
       this.state.markdown = markdown
       this.state.loading = false
@@ -257,16 +265,19 @@ export class MarpApp {
     this.state.statusMessage = 'Saving…'
     this.applyUiState({ syncTextarea: false })
     try {
-      await this.host?.api?.putKv?.(
-        PLUGIN_ID,
-        this.state.docId,
-        STATE_KEY,
-        {
+      const saveResult = await this.host?.exec?.('host.kv.put', {
+        docId: this.state.docId,
+        key: STATE_KEY,
+        value: {
           markdown: this.state.markdown,
           updatedAt: new Date().toISOString(),
         },
-        this.tokenFromHost,
-      )
+        token: this.tokenFromHost,
+      })
+      if (saveResult?.ok === false) {
+        const message = saveResult.error?.message || saveResult.error?.code || 'Failed to save state'
+        throw new Error(message)
+      }
       this.state.saving = false
       this.state.dirty = false
       this.state.lastSavedAt = new Date().toISOString()

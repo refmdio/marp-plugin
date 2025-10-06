@@ -4,7 +4,13 @@ export async function canOpen(docId: string, ctx: any = {}) {
   const docType = ctx?.document?.type || ctx?.docType
   if (docType && docType === 'marp-slide') return true
   try {
-    const kv = await ctx?.host?.api?.getKv?.(PLUGIN_ID, docId, 'meta', ctx?.token)
+    const kvResult = await ctx?.host?.exec?.('host.kv.get', {
+      docId,
+      key: 'meta',
+      token: ctx?.token,
+    })
+    if (kvResult?.ok === false) return false
+    const kv = kvResult?.data
     if (kv && typeof kv === 'object') {
       const meta = typeof kv.value === 'object' && kv.value !== null ? kv.value : kv
       return Boolean(meta?.isMarp)
