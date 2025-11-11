@@ -53,6 +53,25 @@ export function getStyles(): string {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
+.refmd-marp-preview-host {
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 768px) {
+  .refmd-marp-preview-host {
+    padding: 1.5rem;
+  }
+}
+.refmd-marp-preview-root {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
 @media (prefers-reduced-motion: no-preference) {
   .refmd-marp-card {
     transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;

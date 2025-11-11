@@ -9,17 +9,8 @@ export function createInitialState(docId: string | null): UiState {
     previewCss: '',
     renderError: null,
     loading: true,
-    saving: false,
-    dirty: false,
-    lastSavedAt: null,
-    statusMessage: 'Loading Marp deck…',
+    statusMessage: 'Preparing Marp preview…',
     slideCount: 0,
     currentSlide: 0,
   }
-}
-
-export function extractState(kv: any) {
-  if (!kv || typeof kv !== 'object') return null
-  if (kv.value && typeof kv.value === 'object') return kv.value
-  return kv
 }

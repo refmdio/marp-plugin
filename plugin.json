@@ -1,7 +1,7 @@
 {
   "id": "marp",
   "name": "Marp Slides",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "RefMD Contributors",
   "repository": "https://github.com/refmdio/marp-plugin",
   "abi": "refmd-plugin/v1",

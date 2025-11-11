@@ -1,33 +1,35 @@
-import { createKit, resolveDocId } from '@refmdio/plugin-sdk'
+import { createKit, resolveDocId, type SplitEditorDocumentApi, type SplitEditorPreviewDelegate } from '@refmdio/plugin-sdk'
 
-import { DEFAULT_MARKDOWN, PLUGIN_ID, STATE_KEY, STAGE_BASE_CLASS } from './constants'
+import { DEFAULT_MARKDOWN, STAGE_BASE_CLASS, STATE_KEY } from './constants'
 import { exportPdf as performPdfExport } from './exporter'
 import { HeaderBridge } from './header'
 import { loadMarpRenderer } from './renderer'
 import { countSlides } from './slides'
-import { createInitialState, extractState } from './state'
+import { createInitialState } from './state'
 import { getStyles } from './styles'
-import type { ApplyOptions, Kit, ToolbarAction, UiRefs, UiState } from './types'
-import { buildUi } from './ui'
-
-let fullscreenListenerAttached = false
+import type { Kit, UiRefs, UiState } from './types'
+import { buildPreviewStage } from './ui'
 
 export class MarpApp {
   private readonly kit: Kit
   private readonly header: HeaderBridge
   private readonly state: UiState
   private readonly host: any
-  private readonly container: Element
+  private readonly container: HTMLElement
   private readonly tokenFromHost: string | undefined
 
-  private refs!: UiRefs
-  private toolbarButtons: HTMLButtonElement[] = []
+  private refs: UiRefs | null = null
   private renderer: any = null
   private previewFrame: number | null = null
-  private saveTimer: number | null = null
+  private pendingPreview = false
+  private splitDispose: (() => void) | null = null
+  private styleNode: HTMLStyleElement | null = null
+  private disposed = false
+  private documentBridge: SplitEditorDocumentApi | null = null
+  private migrationAttemptedDocId: string | null = null
 
   constructor(container: Element, host: any) {
-    this.container = container
+    this.container = container as HTMLElement
     this.host = host
     this.kit = createKit(host)
     this.header = new HeaderBridge(host)
@@ -38,157 +40,170 @@ export class MarpApp {
 
   async mount() {
     this.header.setTitle('Marp Slides')
-    this.header.setStatus(undefined)
+    this.header.setStatus('Preparing Marp preview…')
     this.header.setBadge(undefined)
     this.header.setActions([])
 
-    const { refs, toolbarButtons } = buildUi(this.kit, this.state.markdown, {
-      onTextareaInput: this.handleTextareaInput,
-      onPrev: () => this.changeSlide(-1),
-      onNext: () => this.changeSlide(1),
-      onToggleFullscreen: () => {
-        void this.toggleFullscreen()
-      },
-      onToolbarAction: this.handleToolbarAction,
-    })
-
-    this.refs = refs
-    this.toolbarButtons = toolbarButtons
-
-    if (typeof document !== 'undefined' && !fullscreenListenerAttached) {
+    this.attachStyles()
+    this.container.addEventListener('keydown', this.onKeydown, true)
+    if (typeof document !== 'undefined') {
       document.addEventListener('fullscreenchange', this.handleFullscreenChange)
       const docAny = document as any
       if (typeof docAny?.addEventListener === 'function') {
         docAny.addEventListener('webkitfullscreenchange', this.handleFullscreenChange)
       }
-      fullscreenListenerAttached = true
     }
 
-    const baseStyles = this.kit.h('style', null, getStyles())
-    this.container.append(baseStyles, refs.root)
-    this.container.addEventListener('keydown', this.onKeydown)
+    void this.loadRenderer()
 
-    this.applyUiState({ syncTextarea: true })
-
-    this.renderer = await loadMarpRenderer()
-
-    if (this.state.docId) {
-      await this.initializeDeck(this.state.docId)
-    } else {
-      this.state.loading = false
-      this.state.statusMessage = ''
-      this.applyUiState({ syncTextarea: true })
+    const mountSplit = this.host?.ui?.mountSplitEditor
+    if (typeof mountSplit !== 'function') {
+      throw new Error('Host does not support split editor reuse yet')
     }
+
+    this.splitDispose = mountSplit(this.container, {
+      docId: this.state.docId,
+      token: this.tokenFromHost ?? null,
+      preview: { delegate: this.createPreviewDelegate() },
+      document: { onReady: this.handleDocumentReady },
+    }) || null
   }
 
-  private readonly handleTextareaInput = () => {
-    this.state.markdown = this.refs.textarea.value
-    this.state.dirty = true
-    this.state.statusMessage = 'Unsaved changes'
-    this.applyUiState({ syncTextarea: false, preserveSelection: true })
-    this.schedulePreview()
-    this.scheduleSave()
-  }
-
-  private readonly handleToolbarAction = (action: ToolbarAction) => {
-    const textarea = this.refs?.textarea
-    if (!textarea || textarea.disabled) return
-
-    const wrap = (before: string, after = '') => {
-      const start = textarea.selectionStart ?? 0
-      const end = textarea.selectionEnd ?? 0
-      const value = textarea.value ?? ''
-      const selected = value.slice(start, end)
-      const insert = before + selected + after
-      textarea.value = value.slice(0, start) + insert + value.slice(end)
-      const cursorStart = start + before.length
-      const cursorEnd = cursorStart + selected.length
-      textarea.selectionStart = cursorStart
-      textarea.selectionEnd = selected.length ? cursorEnd : cursorStart
-    }
-
-    const insertPrefix = (prefix: string) => {
-      const start = textarea.selectionStart ?? 0
-      const value = textarea.value ?? ''
-      const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-      textarea.value = value.slice(0, lineStart) + prefix + value.slice(lineStart)
-      const cursor = start + prefix.length
-      textarea.selectionStart = cursor
-      textarea.selectionEnd = cursor
-    }
-
-    const insertSnippet = (snippet: string) => {
-      const value = textarea.value ?? ''
-      const needsNewline = value.length > 0 && !value.endsWith('\n')
-      textarea.value = value + (needsNewline ? '\n' : '') + snippet + '\n'
-      const cursor = textarea.value.length
-      textarea.selectionStart = cursor
-      textarea.selectionEnd = cursor
-    }
-
-    switch (action) {
-      case 'bold':
-        wrap('**', '**')
-        break
-      case 'italic':
-        wrap('*', '*')
-        break
-      case 'heading':
-        insertPrefix('# ')
-        break
-      case 'quote':
-        insertPrefix('> ')
-        break
-      case 'code':
-        wrap('`', '`')
-        break
-      case 'link': {
-        const url = typeof window.prompt === 'function' ? window.prompt('Enter URL') : ''
-        if (url) wrap('[', `](${url})`)
-        break
+  dispose() {
+    if (this.disposed) return
+    this.disposed = true
+    try { this.container.removeEventListener('keydown', this.onKeydown, true) } catch {}
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('fullscreenchange', this.handleFullscreenChange)
+      const docAny = document as any
+      if (typeof docAny?.removeEventListener === 'function') {
+        docAny.removeEventListener('webkitfullscreenchange', this.handleFullscreenChange)
       }
-      case 'list':
-        insertPrefix('- ')
-        break
-      case 'list-ordered':
-        insertPrefix('1. ')
-        break
-      case 'table':
-        insertSnippet('| Column | Column |\n| --- | --- |\n| Cell | Cell |')
-        break
-      default:
-        break
     }
-
-    this.handleTextareaInput()
+    if (this.splitDispose) {
+      try { this.splitDispose() } catch {}
+      this.splitDispose = null
+    }
+    if (this.previewFrame) {
+      cancelAnimationFrame(this.previewFrame)
+      this.previewFrame = null
+    }
+    if (this.styleNode) {
+      try { this.styleNode.remove() } catch {}
+      this.styleNode = null
+    }
+    this.refs = null
   }
 
-  private readonly onKeydown = (event: KeyboardEvent) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-      event.preventDefault()
-      void this.performSave()
-      return
-    }
-    if (event.target === this.refs.textarea) return
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      this.changeSlide(-1)
-    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      event.preventDefault()
-      this.changeSlide(1)
+  private attachStyles() {
+    if (this.styleNode || typeof document === 'undefined') return
+    const style = document.createElement('style')
+    style.textContent = getStyles()
+    document.head.appendChild(style)
+    this.styleNode = style
+  }
+
+  private createPreviewDelegate(): SplitEditorPreviewDelegate {
+    return ({ container, docId }) => {
+      if (this.state.docId !== docId) {
+        this.migrationAttemptedDocId = null
+      }
+      this.state.docId = docId
+      const { refs } = buildPreviewStage(this.kit, {
+        onPrev: () => this.changeSlide(-1),
+        onNext: () => this.changeSlide(1),
+        onToggleFullscreen: () => { void this.toggleFullscreen() },
+      })
+      this.refs = refs
+      container.classList.add('refmd-marp-preview-host')
+      container.appendChild(refs.root)
+      this.applyUiState()
+      return {
+        update: ({ content }) => {
+          this.handleContentUpdate(typeof content === 'string' ? content : DEFAULT_MARKDOWN)
+        },
+        dispose: () => {
+          if (container.contains(refs.root)) {
+            container.removeChild(refs.root)
+          }
+          if (this.refs === refs) {
+            this.refs = null
+          }
+        },
+      }
     }
   }
 
-  private readonly handleFullscreenChange = () => {
-    this.updateFullscreenButton()
+  private handleDocumentReady = (api: SplitEditorDocumentApi) => {
+    this.documentBridge = api
+    if (this.migrationAttemptedDocId !== api.docId) {
+      this.migrationAttemptedDocId = api.docId
+      void this.tryRestoreFromLegacyState(api)
+    }
+    return () => {
+      if (this.documentBridge === api) {
+        this.documentBridge = null
+      }
+    }
+  }
+
+  private async tryRestoreFromLegacyState(api: SplitEditorDocumentApi) {
+    try {
+      const current = api.getContent()
+      if (current && current.trim().length > 0) return
+      if (typeof this.host?.exec !== 'function') return
+      const kvResult = await this.host.exec('host.kv.get', {
+        docId: api.docId,
+        key: STATE_KEY,
+        token: this.tokenFromHost,
+      })
+      if (kvResult?.ok === false) return
+      const legacy = this.extractLegacyState(kvResult?.data)
+      const markdown = legacy?.markdown
+      if (typeof markdown === 'string' && markdown.trim().length > 0) {
+        api.setContent(markdown)
+      }
+    } catch (error) {
+      console.warn('[marp] failed to restore legacy content', error)
+    }
+  }
+
+  private extractLegacyState(payload: any): { markdown?: string } | null {
+    if (!payload || typeof payload !== 'object') return null
+    if (payload.value && typeof payload.value === 'object') return payload.value as { markdown?: string }
+    return payload as { markdown?: string }
+  }
+
+  private async loadRenderer() {
+    try {
+      const renderer = await loadMarpRenderer()
+      this.renderer = renderer
+      if (this.pendingPreview) {
+        this.schedulePreview()
+      }
+    } catch (err) {
+      console.error('[marp] renderer load failed', err)
+      this.state.renderError = 'Failed to load Marp renderer'
+      this.applyUiState()
+    }
+  }
+
+  private handleContentUpdate(markdown: string) {
+    this.state.markdown = (markdown && markdown.length > 0) ? markdown : DEFAULT_MARKDOWN
+    this.state.loading = false
+    this.state.statusMessage = ''
+    this.schedulePreview()
   }
 
   private schedulePreview() {
+    this.pendingPreview = true
     if (!this.renderer) return
     if (this.previewFrame) cancelAnimationFrame(this.previewFrame)
     this.previewFrame = requestAnimationFrame(() => {
+      this.previewFrame = null
+      this.pendingPreview = false
       try {
-        const rendered = this.renderer?.render(this.state.markdown)
+        const rendered = this.renderer?.render(this.state.markdown || DEFAULT_MARKDOWN)
         if (rendered) {
           this.state.previewHtml = rendered.html
           this.state.previewCss = rendered.css
@@ -211,109 +226,28 @@ export class MarpApp {
         this.state.slideCount = 0
         this.state.currentSlide = 0
       }
-      this.applyUiState({ syncTextarea: false })
+      this.applyUiState()
     })
   }
 
-  private scheduleSave() {
-    if (this.saveTimer) window.clearTimeout(this.saveTimer)
-    this.saveTimer = window.setTimeout(() => {
-      void this.performSave()
-    }, 900)
-  }
+  private applyUiState() {
+    if (!this.refs) return
 
-  private async initializeDeck(docId: string) {
-    this.state.loading = true
-    this.state.statusMessage = 'Loading Marp deck…'
-    this.applyUiState({ syncTextarea: false })
-    try {
-      const kvResult = await this.host?.exec?.('host.kv.get', {
-        docId,
-        key: STATE_KEY,
-        token: this.tokenFromHost,
-      })
-      if (kvResult?.ok === false) {
-        const message = kvResult.error?.message || kvResult.error?.code || 'Failed to load state'
-        throw new Error(message)
-      }
-      const payload = extractState(kvResult?.data)
-      const markdown = payload?.markdown && typeof payload.markdown === 'string' ? payload.markdown : DEFAULT_MARKDOWN
-      this.state.markdown = markdown
-      this.state.loading = false
-      this.state.dirty = false
-      this.state.lastSavedAt = typeof payload?.updatedAt === 'string' ? payload.updatedAt : null
-      this.state.statusMessage = ''
-      this.state.currentSlide = 0
-      this.state.slideCount = 0
-      this.refs.textarea.value = markdown
-      this.applyUiState({ syncTextarea: false })
-      this.schedulePreview()
-    } catch (err) {
-      console.error('[marp] load failed', err)
-      this.state.loading = false
-      this.state.statusMessage = 'Failed to load Marp deck'
-      this.state.renderError = 'Failed to load data. Try reloading.'
-      this.state.slideCount = 0
-      this.state.currentSlide = 0
-      this.applyUiState({ syncTextarea: false })
-    }
-  }
-
-  private async performSave() {
-    if (!this.state.docId || (!this.state.dirty && !this.state.saving)) return
-    this.state.saving = true
-    this.state.statusMessage = 'Saving…'
-    this.applyUiState({ syncTextarea: false })
-    try {
-      const saveResult = await this.host?.exec?.('host.kv.put', {
-        docId: this.state.docId,
-        key: STATE_KEY,
-        value: {
-          markdown: this.state.markdown,
-          updatedAt: new Date().toISOString(),
-        },
-        token: this.tokenFromHost,
-      })
-      if (saveResult?.ok === false) {
-        const message = saveResult.error?.message || saveResult.error?.code || 'Failed to save state'
-        throw new Error(message)
-      }
-      this.state.saving = false
-      this.state.dirty = false
-      this.state.lastSavedAt = new Date().toISOString()
-      this.state.statusMessage = ''
-      this.applyUiState({ syncTextarea: false })
-    } catch (err) {
-      console.error('[marp] save failed', err)
-      this.state.saving = false
-      this.state.statusMessage = 'Failed to save'
-      this.applyUiState({ syncTextarea: false })
-      this.kit.toast?.('error', 'Failed to save Marp deck')
-    }
-  }
-
-  private applyUiState(options: ApplyOptions = {}) {
-    const { syncTextarea = false, preserveSelection = false } = options
-
-    if (!this.state.slideCount) {
-      this.state.currentSlide = 0
-    } else if (this.state.currentSlide >= this.state.slideCount) {
-      this.state.currentSlide = this.state.slideCount - 1
-    } else if (this.state.currentSlide < 0) {
-      this.state.currentSlide = 0
-    }
+    const inlineStatus = this.state.statusMessage
+      || (this.state.loading ? 'Rendering…' : '')
+      || this.state.renderError
 
     this.header.setBadge(undefined)
-    this.header.setStatus(undefined)
-
-    let inlineStatus = this.state.statusMessage
-    if (!inlineStatus) {
-      if (this.state.loading) inlineStatus = 'Loading…'
-      else if (!this.state.docId) inlineStatus = ''
-      else if (this.state.dirty) inlineStatus = 'Unsaved changes'
-      else inlineStatus = ''
-    }
     this.header.setStatus(inlineStatus || undefined)
+    this.header.setActions([
+      {
+        id: 'export-pdf',
+        label: '⤓',
+        disabled: !this.state.previewHtml,
+        variant: 'outline',
+        onSelect: () => this.exportPdf(),
+      },
+    ])
 
     const slideCount = this.state.slideCount
     this.refs.paginationLabel.textContent = slideCount ? `${this.state.currentSlide + 1} / ${slideCount}` : '0 / 0'
@@ -325,36 +259,11 @@ export class MarpApp {
     this.refs.fullscreenButton.disabled = !canFullscreen
     this.updateFullscreenButton()
 
-    const toolbarDisabled = !this.state.docId || this.state.loading
-    this.toolbarButtons.forEach((btn) => {
-      btn.disabled = toolbarDisabled
-    })
-
-    this.refs.textarea.disabled = !this.state.docId || this.state.loading
-    if (syncTextarea) {
-      this.refs.textarea.value = this.state.markdown
-    } else if (!preserveSelection && document.activeElement !== this.refs.textarea) {
-      this.refs.textarea.value = this.state.markdown
-    }
-
-    if (!this.state.docId) {
-      this.header.setActions([])
-    } else {
-      this.header.setActions([
-        {
-          id: 'export-pdf',
-          label: '⤓',
-          disabled: !this.state.previewHtml,
-          variant: 'outline',
-          onSelect: () => this.exportPdf(),
-        },
-      ])
-    }
-
     this.renderPreviewStage()
   }
 
   private renderPreviewStage() {
+    if (!this.refs) return
     const stage = this.refs.previewStage
     const setStageMessage = (text: string, modifier: string) => {
       stage.className = `${STAGE_BASE_CLASS} ${STAGE_BASE_CLASS}--message ${STAGE_BASE_CLASS}--${modifier}`
@@ -398,6 +307,29 @@ export class MarpApp {
     svgs.forEach((svg, idx) => {
       svg.classList.toggle('is-active', idx === index)
     })
+  }
+
+  private readonly onKeydown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
+    if (!this.refs) return
+    const target = event.target as HTMLElement | null
+    if (target) {
+      const tag = target.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea') return
+      if (target.isContentEditable) return
+      if (target.closest('.monaco-editor')) return
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      this.changeSlide(-1)
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      this.changeSlide(1)
+    }
+  }
+
+  private readonly handleFullscreenChange = () => {
+    this.updateFullscreenButton()
   }
 
   private exportPdf() {
@@ -450,7 +382,7 @@ export class MarpApp {
     button.title = label
     button.setAttribute('aria-label', label)
     button.setAttribute('aria-pressed', active ? 'true' : 'false')
-    if (this.refs.stageShell) {
+    if (this.refs?.stageShell) {
       this.refs.stageShell.classList.toggle('fullscreen-active', active)
     }
   }
@@ -460,7 +392,7 @@ export class MarpApp {
     const next = Math.min(Math.max(this.state.currentSlide + delta, 0), this.state.slideCount - 1)
     if (next === this.state.currentSlide) return
     this.state.currentSlide = next
-    this.applyUiState({ syncTextarea: false })
-    this.refs.previewStage.focus({ preventScroll: true })
+    this.applyUiState()
+    this.refs?.previewStage?.focus({ preventScroll: true })
   }
 }
